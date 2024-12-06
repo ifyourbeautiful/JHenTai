@@ -19,34 +19,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: Android
-            os: ubuntu-latest
-            artifact_name: release-Android
-            artifact_path: build/app/outputs/apk/release/*.apk
           - target: Windows
             os: windows-latest
             artifact_name: release-Windows
             artifact_path: build/windows/*.zip
-          - target: Linux
-            os: ubuntu-22.04
-            artifact_name: release-Linux
-            artifact_path: |
-              build/linux/*.AppImage
-              build/linux/*.deb
-          - target: iOS
-            os: macos-latest
-            cache_pod_key: ios-pods
-            cache_pod_path: ios/Pods
-            cache_pod_restore_keys_hash_file: ios/Podfile.lock
-            artifact_name: release-iOS
-            artifact_path: build/**/*.ipa
-          - target: macOS
-            os: macos-latest
-            cache_pod_key: macos-pods
-            cache_pod_path: macos/Pods
-            cache_pod_restore_keys_hash_file: macos/Podfile.lock
-            artifact_name: release-macOS
-            artifact_path: /Users/runner/work/JHenTai/JHenTai/*.dmg
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     runs-on: ${{ matrix.os }}
@@ -100,38 +76,7 @@ jobs:
         shell: bash
         run: |
           echo "::set-output name=version::$(head -n 5 pubspec.yaml | tail -n 1 | cut -d ' ' -f 2)"
-      # Build Android .apk
-      - name: Build Android
-        if: matrix.target == 'Android'
-        run: |
-          flutter build apk -t lib/src/main.dart --release --split-per-abi
-          cd build/app/outputs/apk/release
-          mv app-arm64-v8a-release.apk JHenTai-${{ steps.get_version.outputs.version }}-arm64-v8a.apk
-          mv app-armeabi-v7a-release.apk JHenTai-${{ steps.get_version.outputs.version }}-armeabi-v7a.apk
-          mv app-x86_64-release.apk JHenTai-${{ steps.get_version.outputs.version }}-x86_64.apk
-      # Build iOS .ipa
-      - name: Build iOS
-        if: matrix.target == 'ios'
-        run: |
-          flutter precache --ios
-          cd ios
-          pod update
-          cd ..
-          flutter build ios -t lib/src/main.dart --release --no-codesign
-          sh thin-payload.sh build/ios/iphoneos/*.app
-          cd build
-          mkdir -p Payload
-          mv ios/iphoneos/*.app Payload
-          zip -9 JHenTai_${{ steps.get_version.outputs.version }}.ipa -r Payload
-      # Build macOS .dmg
-      - name: Build macOS
-        if: matrix.target == 'macOS'
-        run: |
-          flutter precache --macos
-          cd macos
-          pod update
-          cd ..
-          sh dmg.sh
+
       # Build Windows .zip
       - name: Build Windows
         if: matrix.target == 'Windows'
@@ -143,61 +88,7 @@ jobs:
           Copy-Item $SrcDir\* -Recurse $DestDir
           Copy-Item -Filter *.dll -Path windows\* -Destination $DestDir -Force
           Compress-Archive $DestDir build\windows\JHenTai_${{ steps.get_version.outputs.version }}_Windows.zip
-      # Build Linux .deb and .AppImage
-      - name: Build Linux
-        if: matrix.target == 'Linux'
-        run: |
-          # Prepare build depends
-          sudo apt-get update -y
-          sudo apt-get install -y ninja-build libfuse2 webkit2gtk-4.1
-          
-          # Compile
-          flutter config --enable-linux-desktop
-          flutter build linux --release -t lib/src/main.dart
-
-          # Build debian package
-          mkdir -p build/linux/JHenTai-${{ steps.get_version.outputs.version }}-Linux-amd64
-          cd build/linux/JHenTai-${{ steps.get_version.outputs.version }}-Linux-amd64
-          mkdir -p opt/jhentai
-          mkdir -p usr/share/applications
-          mkdir -p usr/share/icons/hicolor/512x512/apps
-          cp -r ../x64/release/bundle/* opt/jhentai
-          cp -r ../../../linux/assets/DEBIAN .
-          chmod 0755 DEBIAN/postinst
-          chmod 0755 DEBIAN/postrm
-
-          cat>DEBIAN/control<<EOF
-          Maintainer: madoka773 <valigarmanda55@gmail.com>
-          Package: jhentai
-          Version: ${{ steps.get_version.outputs.version }}
-          Section: x11
-          Priority: optional
-          Architecture: amd64
-          Essential: no
-          Installed-Size: 34648
-          Description: A cross-platform app made for e-hentai & exhentai by Flutter.
-          Homepage: https://github.com/jiangtian616/JHenTai
-          EOF
-
-          cp ../../../linux/assets/top.jtmonster.jhentai.desktop usr/share/applications
-          cp ../../../assets/icon/JHenTai_512.png usr/share/icons/hicolor/512x512/apps/top.jtmonster.jhentai.png
-
-          cd ..
-          dpkg-deb --build --root-owner-group JHenTai-${{ steps.get_version.outputs.version }}-Linux-amd64
-
-          # Build AppImage
-          wget -O appimage-builder https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
-          chmod +x appimage-builder
-
-          mkdir AppDir
-          cp -r x64/release/bundle/* AppDir
-          mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps/
-          mkdir -p AppDir/usr/share/applications
-          cp ../../linux/assets/top.jtmonster.jhentai.desktop AppDir/usr/share/applications
-          cp ../../assets/icon/JHenTai_512.png AppDir/usr/share/icons/hicolor/512x512/apps/top.jtmonster.jhentai.png
-          ./appimage-builder --skip-tests --recipe ../../linux/assets/AppImageBuilder.yml
-          mv JHenTai-latest-x86_64.AppImage JHenTai-${{ steps.get_version.outputs.version }}-Linux-x86_64.AppImage
-      # Upload Artifacts
+     
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
@@ -225,6 +116,6 @@ jobs:
           tag: ${{ github.ref_name }}
           allowUpdates: true
           bodyFile: changelog/${{ github.ref_name }}.md
-          artifacts: /tmp/artifacts/release-Android/*.apk,/tmp/artifacts/release-iOS/*.ipa,/tmp/artifacts/release-macOS/*.dmg,/tmp/artifacts/release-Windows/*.zip,/tmp/artifacts/release-Linux/*.AppImage,/tmp/artifacts/release-Linux/*.deb
+          artifacts: /tmp/artifacts/release-macOS/*.dmg,/tmp/artifacts/release-Windows/*.zip
           artifactErrorsFailBuild: true
           replacesArtifacts: true
